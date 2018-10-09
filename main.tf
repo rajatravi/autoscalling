@@ -1,5 +1,5 @@
 provider "aws" {
-   region     = "ap-southeast-1a"
+   region     = "ap-southeast-1"
    profile = "default"
 }
 
@@ -11,7 +11,7 @@ resource "aws_launch_configuration" "lc" {
   security_groups      = ["${var.security_group_ids}"]
   user_data            = "${var.user_data}"
   enable_monitoring    = "${var.enable_monitoring}"
-  iam_instance_profile = "${var.iam_instance_profile}"
+ # iam_instance_profile = "${var.iam_instance_profile}"
   associate_public_ip_address = "${var.associate_public_ip_address}"
 
   root_block_device {
@@ -33,11 +33,11 @@ resource "aws_autoscaling_group" "asg" {
   desired_capacity     = "${var.asg_desired}"
   force_delete         = true
   launch_configuration = "${aws_launch_configuration.lc.name}"
-  load_balancers       = ["${aws_elb.elb.id}"]
+  load_balancers       = ["apache-public-face-elb"]
   health_check_grace_period = 300
   health_check_type         = "ELB"
   termination_policies = ["NewestInstance"]
-  suspended_processes  = "${var.suspended_processes}"
+#  suspended_processes  = "${var.suspended_processes}"
 
   lifecycle {
     create_before_destroy = true
@@ -48,7 +48,7 @@ resource "aws_autoscaling_group" "asg" {
     value               = "${var.name}_asg"
     propagate_at_launch = "true"
   }
-
+}
 #scale up
 
 resource "aws_autoscaling_policy" "scale-up-policy-prodwaf" {
@@ -72,7 +72,7 @@ resource "aws_cloudwatch_metric_alarm" "cpualarm-up-prodwaf" {
     AutoScalingGroupName = "${aws_autoscaling_group.asg.name}"
   }
   alarm_description = "This metric monitors ec2 cpu utilization"
-  alarm_actions     = ["${aws_autoscaling_policy.scale-up-policy-prodmobrmsapp.arn}", "${aws_sns_topic.scaleupscaledownalerts.arn}"]
+  alarm_actions     = ["${aws_autoscaling_policy.scale-up-policy-prodwaf.arn}", "${aws_sns_topic.scaleupscaledownalerts.arn}"]
 }
 
 # scale down
@@ -101,6 +101,23 @@ resource "aws_cloudwatch_metric_alarm" "cpualarm-down-prodwaf" {
   alarm_actions     = ["${aws_autoscaling_policy.scale-down-policy-prodwaf.arn}", "${aws_sns_topic.scaleupscaledownalerts.arn}"]
 }
 
+resource "aws_autoscaling_notification" "waf_notifications" {
+  group_names = [
+    "${aws_autoscaling_group.asg.name}",
+  ]
+
+  notifications = [
+    "autoscaling:EC2_INSTANCE_LAUNCH",
+    "autoscaling:EC2_INSTANCE_TERMINATE",
+    "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+    "autoscaling:EC2_INSTANCE_TERMINATE_ERROR",
+  ]
+
+  topic_arn = "${aws_sns_topic.scaleupscaledownalerts.arn}"
+}
+
+
 resource "aws_sns_topic" "scaleupscaledownalerts" {
   name = "scaleupscaledownalerts"
-}
+ }
+
